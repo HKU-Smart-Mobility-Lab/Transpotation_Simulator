@@ -530,7 +530,6 @@ def get_exponential_epsilons(initial_epsilon, final_epsilon, steps, decay=0.99, 
 
     return np.array(epsilons)
 
-
 def sample_all_drivers(driver_info, t_initial, t_end, driver_sample_ratio=1, driver_number_dist=''):
     """
     :param driver_info: the information of driver
@@ -564,7 +563,12 @@ def sample_all_drivers(driver_info, t_initial, t_end, driver_sample_ratio=1, dri
     sampled_driver_info['itinerary_node_list'] = [[] for i in range(sampled_driver_info.shape[0])]
     sampled_driver_info['itinerary_segment_time_list'] = [[] for i in range(sampled_driver_info.shape[0])]
 
+    # 添加 vehicle_type 和 energy_type 字段
+    sampled_driver_info['vehicle_type'] = sampled_driver_info['av'].apply(lambda x: 'AV' if x == 1 else 'HV') # Andrew
+    sampled_driver_info['energy_type'] = sampled_driver_info['ev'].apply(lambda x: 'EV' if x == 1 else 'Non-EV') # Andrew
+
     return sampled_driver_info
+
 
 
 def sample_request_num(t_mean, std, delta_t):

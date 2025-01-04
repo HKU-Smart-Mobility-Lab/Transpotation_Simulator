@@ -1,4 +1,5 @@
 import pandas as pd
+from pricing_agent import PricingAgent
 
 from simulator_pattern import *
 from utilities import *
@@ -8,6 +9,11 @@ from config import sarsa_params
 
 class Simulator:
     def __init__(self, **kwargs):
+
+        # Agent of 3 modules (Andrew)
+        self.pricing_agent = PricingAgent(strategy=kwargs['pricing_strategy'])
+        # self.matching_agent = MatchingAgent()  
+        # self.reposition_agent = RepositionAgent()
 
         # basic parameters: time & sample
         self.t_initial = kwargs['t_initial']
@@ -49,6 +55,7 @@ class Simulator:
         self.driver_file_name = kwargs['driver_file_name']
         pattern_params = {'simulator_mode': self.simulator_mode, 'request_file_name': self.request_file_name,
                           'driver_file_name': self.driver_file_name}
+        # Patern Initiaoization
         pattern = SimulatorPattern(**pattern_params)
 
         # self.method = kwargs.pop('method', 'no_subway')  # rl for matching
@@ -96,7 +103,7 @@ class Simulator:
         self.driver_sample_ratio = kwargs['driver_sample_ratio']
 
         # order and driver databases
-        self.driver_info = pattern.driver_info
+        self.driver_info = pattern.driver_info # initial driver info
         self.driver_info['grid_id'] = self.driver_info['grid_id'].values.astype(int)
         self.request_all = pattern.request_all
         self.request_databases = None
@@ -172,11 +179,16 @@ class Simulator:
             self.dispatch_transitions_buffer = [np.array([]).reshape([0, 2]), np.array([]), np.array([]).reshape([0, 2]),
                                             np.array([]).astype(float)]  # rl for matching
         self.requests = pd.DataFrame(request_list,columns=column_name)
-        trip_distance = self.requests['trip_distance'].values.tolist()
-        reward_list = []
-        for dis in trip_distance:
-            reward_list.append(2.5 + 0.5 * int(max(0,dis*1000-322)/322))
-        self.requests['designed_reward'] = reward_list
+        # Andrew
+
+        # 使用 PricingAgent 计算定价
+        self.requests['designed_reward'] = self.requests.apply(
+            lambda row: self.pricing_agent.get_action({
+                'trip_distance': row['trip_distance'],
+            }),
+            axis=1
+        )
+
         self.requests['trip_time']  = self.requests['trip_distance'] / self.vehicle_speed * 3600
         self.requests['matching_time'] = 0
         self.requests['pickup_end_time'] = 0
@@ -485,11 +497,14 @@ class Simulator:
                 wait_info['trip_distance'] = trip_distance
                 wait_info['trip_time'] = wait_info['trip_distance'] / self.vehicle_speed * 3600
                 wait_info['wait_time'] = 0
+                # Andrew
                 # TJ
+                pricing_states = self.pricing_agent.get_state()
                 if self.rl_mode == 'matching':
-                    wait_info['designed_reward'] = 2.5 + 0.5 * int(max(0,trip_distance*1000-322)/322)
+                    wait_info['designed_reward'] = self.pricing_agent.get_action(pricing_states)
                 elif self.rl_mode == 'reposition':
-                    wait_info['designed_reward'] = 2.5 + 0.5 * int(max(0,trip_distance-322)/322)
+                    # TODO: repositioning reward
+                    wait_info['designed_reward'] =  2.5 + 0.5 * int(max(0,trip_distance-322)/322)
                     wait_info['immediate_reward'] = 0
                 # TJ
                 wait_info['status'] = 0
@@ -542,10 +557,10 @@ class Simulator:
             temp_request = []
             # TJ 当更换为按照日期训练时 进行调整
             min_time = max(env_params['t_initial'], self.time - self.request_interval)
-            for time in range(min_time, self.time):
-                if time in self.request_databases.keys():
-                    temp_request.extend(self.request_databases[time])
-            # temp_request = self.request_databases
+            # for time in range(min_time, self.time):
+            #     if time in self.request_databases.keys():
+            #         temp_request.extend(self.request_databases[time])
+            temp_request = self.request_databases
         # TJ
             # if self.time in self.request_databases.keys():
             #     temp_request = self.request_databases[self.time]
@@ -1172,44 +1187,6 @@ class Simulator:
         # rl for matching
         return
 
-    def step(self):
-        """
-        This function used to run the simulator step by step
-        :return:
-        """
-        self.new_tracks = {}
-
-        # Step 1: order dispatching
-        wait_requests = deepcopy(self.wait_requests)
-        driver_table = deepcopy(self.driver_table)
-        matched_pair_actual_indexes, matched_itinerary = order_dispatch(wait_requests, driver_table, self.maximal_pickup_distance, self.dispatch_method,self.method)
-        # Step 2: driver/passenger reaction after dispatching
-        df_new_matched_requests, df_update_wait_requests = self.update_info_after_matching_multi_process(matched_pair_actual_indexes, matched_itinerary)
-        self.matched_requests = pd.concat([self.matched_requests, df_new_matched_requests], axis=0)
-        self.matched_requests = self.matched_requests.reset_index(drop=True)
-        self.wait_requests = df_update_wait_requests.reset_index(drop=True)
-
-        # Step 3: bootstrap new orders
-        self.order_generation()
-
-        # Step 4: both-rg-cruising and/or repositioning decision
-        self.cruise_and_reposition()
-
-        # Step 4.1: track recording
-        if self.track_recording_flag:
-            self.real_time_track_recording()
-
-        # Step 5: update next state for drivers
-        self.update_state()
-
-        # Step 6： online/offline update()
-        self.driver_online_offline_update()
-
-        # Step 7: update time
-        self.update_time()
-
-        return self.new_tracks
-
     def rl_step(self, score_agent={}, epsilon=0): # rl for matching
         """
         This function used to run the simulator step by step
@@ -1250,6 +1227,7 @@ class Simulator:
         # self.total_reward += np.sum(df_new_matched_requests['immediate_reward'].values)
         # TJ
         if len(df_new_matched_requests) != 0:
+            # TODO: pricing
             self.total_reward += np.sum(df_new_matched_requests['designed_reward'].values)
             # print("added reward in rl step, reward is {}".format(self.total_reward))
         else:
@@ -1292,6 +1270,7 @@ class Simulator:
 
         self.step7 += (time8 - time7)
         
+        # 返回值：状态-动作-奖励-下一状态转移信息
         return self.dispatch_transitions_buffer   # rl for matching
 
     def step1(self): # rl for repositioning
@@ -1338,3 +1317,85 @@ class Simulator:
         self.update_time()
 
         return
+
+# Add changes for pricing module: Andrew
+    def get_pricing_state(self):
+        """
+        获取与定价相关的状态
+        """
+        return {
+            "trip_distances": self.requests['trip_distance'].tolist(),  # 每个订单的距离
+            "supply": self.driver_table[self.driver_table['status'] == 0].shape[0],  # 空闲司机数量
+            "demand": self.requests.shape[0],  # 当前订单数量
+        }
+    
+    def update_pricing_agent(self, pricing_action):
+        """
+        更新订单表中的价格
+        """
+        self.requests['designed_reward'] = pricing_action  # 使用 PricingAgent 提供的价格更新订单
+
+    def get_matching_state(self):
+        """
+        Returns the state required for matching.
+        Example: available drivers and pending orders.
+        """
+        return {
+            "drivers": self.driver_table[self.driver_table['status'] == 0].to_dict('records'),  # Idle drivers
+            "orders": self.requests[self.requests['status'] == 0].to_dict('records'),  # Unmatched orders
+        }
+
+    def update_matching_agent(self, matching_action):
+        """
+        更新匹配状态
+        """
+        # 更新司机状态
+        for driver_id, action in matching_action.items():
+            self.driver_table.loc[self.driver_table['driver_id'] == driver_id, 'status'] = action
+
+        # 更新订单状态
+        for order_id, action in matching_action.items():
+            self.requests.loc[self.requests['order_id'] == order_id, 'status'] = action 
+        
+    # def step(self):
+    #     """
+    #     This function used to run the simulator step by step
+    #     :return:
+    #     """
+    #     self.new_tracks = {}
+
+    #     # Step 1: order dispatching
+    #     wait_requests = deepcopy(self.wait_requests)
+    #     driver_table = deepcopy(self.driver_table)
+    #     matched_pair_actual_indexes, matched_itinerary = order_dispatch(wait_requests, driver_table, self.maximal_pickup_distance, self.dispatch_method,self.method)
+    #     # Step 2: driver/passenger reaction after dispatching
+    #     df_new_matched_requests, df_update_wait_requests = self.update_info_after_matching_multi_process(matched_pair_actual_indexes, matched_itinerary)
+    #     self.matched_requests = pd.concat([self.matched_requests, df_new_matched_requests], axis=0)
+    #     self.matched_requests = self.matched_requests.reset_index(drop=True)
+    #     self.wait_requests = df_update_wait_requests.reset_index(drop=True)
+
+    #     # Step 3: bootstrap new orders
+    #     self.order_generation()
+
+    #     # Step 4: both-rg-cruising and/or repositioning decision
+    #     self.cruise_and_reposition()
+
+    #     # Step 4.1: track recording
+    #     if self.track_recording_flag:
+    #         self.real_time_track_recording()
+
+    #     # Step 5: update next state for drivers
+    #     self.update_state()
+
+    #     # Step 6： online/offline update()
+    #     self.driver_online_offline_update()
+
+    #     # Step 7: update time
+    #     self.update_time()
+
+    #     return self.new_tracks
+
+
+
+
+

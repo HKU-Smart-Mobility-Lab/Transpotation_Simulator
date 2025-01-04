@@ -1,4 +1,7 @@
 from simulator_env import Simulator
+from simulator_trainer import SimulatorTrainer 
+from pricing_agent import PricingAgent
+from matching_agent import MatchingAgent  
 import pickle
 import numpy as np
 from config import *
@@ -37,7 +40,6 @@ if __name__ == "__main__":
                         env_params['driver_num'] = single_driver_num
                         env_params['maximal_pickup_distance'] = single_max_distance_num
                         env_params['experiment_mode'] = 'train'
-
                         simulator = Simulator(**env_params)
                         # Comment simulator.reset() below if you are not running matching with instant_reward_no_subway
                         simulator.reset() # 每次循环都重置simulator的状态
@@ -46,7 +48,23 @@ if __name__ == "__main__":
 
                         if env_params['rl_mode'] == "matching":
                             if simulator.experiment_mode == 'test':
-                                
+                                # TODO:继续修改、重构
+                                pricing_agent = PricingAgent(strategy="static")
+                                matching_agent_params = {
+                                    'strategy_type': simulator.method,
+                                    'strategy_params': sarsa_params,
+                                    'load_path': load_path + 'episode_4000\\sarsa_q_value_table_epoch_4000.pickle',
+                                    'flag_load': FLAG_LOAD  # 新增 FLAG_LOAD 参数
+                                }
+
+                                matching_agent = MatchingAgent(**matching_agent_params)
+                                # Initialize SimulatorTrainer
+                                trainer = SimulatorTrainer(
+                                    simulator=simulator,
+                                    matching_agent=matching_agent,
+                                    pricing_agent=pricing_agent
+                                )
+
                                 column_list = ['total_reward', 'matched_transfer_request_num', 'matched_request_num',
                                                'transfer_request_num',
                                                'long_request_num',
@@ -59,159 +77,19 @@ if __name__ == "__main__":
                                                'matched_short_request_ratio',
                                                'matched_request_ratio','waiting_time','pickup_time','occupancy_rate','occupancy_rate_no_pickup']
                                 
-                                test_num = 10
-                                test_interval = 20
-                                threshold = 5
-                                df = pd.DataFrame(np.zeros([test_num, len(column_list)]), columns=column_list)
-                                # 恢复上一次的训练结果
-                                # df = pickle.load(open(load_path + 'performance_record_test_' + env_params['method'] + '.pickle', 'rb'))
-                                remaining_index_array = np.where(df['total_reward'].values == 0)[0]
-                                if len(remaining_index_array > 0):
-                                    last_stopping_index = remaining_index_array[0]
-                                ax,ay = [],[]
-                                
-                                epoch = 0
-                                for num in range(last_stopping_index, test_num):
-                                    print('num: ', num)
-                                    # simulator = Simulator(**env_params)
-                                    agent = {}
-                                    if simulator.method in ['sarsa', 'sarsa_no_subway', 'sarsa_travel_time',
-                                                            'sarsa_travel_time_no_subway',
-                                                            'sarsa_total_travel_time', 'sarsa_total_travel_time_no_subway']:
-                                        agent = SarsaAgent(**sarsa_params)
-                                        agent.load_parameters(
-                                            load_path + 'episode_4000\\sarsa_q_value_table_epoch_4000.pickle')
-
-                                    total_reward = 0
-                                    total_request_num = 0
-                                    long_request_num = 0
-                                    medium_request_num = 0
-                                    short_request_num = 0
-                                    matched_request_num = 0
-                                    matched_long_request_num = 0
-                                    matched_medium_request_num = 0
-                                    matched_short_request_num = 0
-                                    occupancy_rate = 0
-                                    occupancy_rate_no_pickup = 0
-                                    pickup_time = 0
-                                    waiting_time = 0
-                                    transfer_request_num = 0
-                                    matched_transfer_request_num = 0
-                                    for date in TEST_DATE_LIST:
-                                        simulator.experiment_date = date
-                                        simulator.reset()
-                                        start_time = time.time()
-                                        for step in range(simulator.finish_run_step):
-                                            # TODO: 根据rl_step进行重构
-                                            dispatch_transitions = simulator.rl_step(agent)
-                                        end_time = time.time()
-
-                                        # 逐步累加指标：总收益、总请求数、总匹配数、总转移请求数、总长途请求数、总中途请求数、总短途请求数、
-                                        total_reward += simulator.total_reward
-                                        total_request_num += simulator.total_request_num
-                                        transfer_request_num += simulator.transfer_request_num
-                                        occupancy_rate += simulator.occupancy_rate
-                                        matched_request_num += simulator.matched_requests_num
-                                        # matched_transfer_request_num += simulator.matched_transferred_requests_num
-                                        long_request_num += simulator.long_requests_num
-                                        medium_request_num += simulator.medium_requests_num
-                                        short_request_num += simulator.short_requests_num
-                                        matched_long_request_num += simulator.matched_long_requests_num
-                                        matched_medium_request_num += simulator.matched_medium_requests_num
-                                        matched_short_request_num += simulator.matched_short_requests_num
-                                        occupancy_rate_no_pickup += simulator.occupancy_rate_no_pickup
-                                        pickup_time += simulator.pickup_time / simulator.matched_requests_num
-                                        waiting_time += simulator.waiting_time / simulator.matched_requests_num
-                                    
-                                    
-                                    epoch += 1
-                                    total_reward = total_reward / len(TEST_DATE_LIST)
-                                    ax.append(epoch)
-                                    ay.append(total_reward)
-                                    print("total reward",total_reward)
-                                    total_request_num = total_request_num / len(TEST_DATE_LIST)
-                                    transfer_request_num = transfer_request_num / len(TEST_DATE_LIST)
-                                    occupancy_rate = occupancy_rate / len(TEST_DATE_LIST)
-                                    matched_request_num = matched_request_num / len(TEST_DATE_LIST)
-                                    long_request_num = long_request_num / len(TEST_DATE_LIST)
-                                    medium_request_num = medium_request_num / len(TEST_DATE_LIST)
-                                    short_request_num = short_request_num / len(TEST_DATE_LIST)
-                                    matched_long_request_num = matched_long_request_num / len(TEST_DATE_LIST)
-                                    matched_medium_request_num = matched_medium_request_num / len(TEST_DATE_LIST)
-                                    matched_short_request_num = matched_short_request_num / len(TEST_DATE_LIST)
-                                    occupancy_rate_no_pickup = occupancy_rate_no_pickup / len(TEST_DATE_LIST)
-                                    pickup_time = pickup_time / len(TEST_DATE_LIST)
-                                    waiting_time = waiting_time / len(TEST_DATE_LIST)
-                                    print("pick",pickup_time)
-                                    print("wait",waiting_time)
-                                    print("matching ratio",matched_request_num/total_request_num)
-                                    print("ocu",occupancy_rate)
-                                    record_array = np.array(
-                                        [total_reward, matched_transfer_request_num, matched_request_num,
-                                         transfer_request_num, long_request_num, matched_long_request_num,
-                                         matched_medium_request_num, medium_request_num, matched_short_request_num,
-                                         short_request_num, total_request_num,waiting_time,pickup_time,occupancy_rate,occupancy_rate_no_pickup])
-                                    
-                                    # record_array = np.array([total_reward])
-
-                                    if num == 0:
-                                        df.iloc[0, :15] = record_array
-                                    else:
-                                        df.iloc[num, :15] = (df.iloc[(num - 1), :1].values * num + record_array) / (
-                                                    num + 1)
-
-                                    if num % 10 == 0:  # save the result every 10
-                                        pickle.dump(df, open(
-                                            load_path + 'performance_record_test_' + env_params['method'] + '.pickle',
-                                            'wb'))
-
-                                    # 检查收敛性（训练结束的条件）
-                                    if num >= (test_interval - 1):
-                                        profit_array = df.loc[(num - test_interval):num, 'total_reward'].values
-                                        # print(profit_array)
-                                        error = np.abs(np.max(profit_array) - np.min(profit_array))
-                                        print('error: ', error)
-                                        if error < threshold:
-                                            index = num
-                                            print('converged at index ', index)
-                                            break
-                                plt.plot(ax,ay)
-                                plt.plot(ax,ay,'r+')
-                                plt.show()
-                                df.loc[:num, 'matched_transfer_request_ratio'] = df.loc[:(num),
-                                                                                 'matched_transfer_request_num'].values / df.loc[
-                                                                                                                          :(
-                                                                                                                              num),
-                                                                                                                          'matched_request_num'].values
-                                df.loc[:(num), 'transfer_long_request_ratio'] = df.loc[:(num),
-                                                                                'transfer_request_num'].values / df.loc[
-                                                                                                                 :(num),
-                                                                                                                 'long_request_num'].values
-                                df.loc[:(num), 'matched_long_request_ratio'] = df.loc[:(num),
-                                                                               'matched_long_request_num'].values / df.loc[
-                                                                                                                    :(num),
-                                                                                                                    'long_request_num'].values
-                                df.loc[:(num), 'matched_medium_request_ratio'] = df.loc[:(num),
-                                                                                 'matched_medium_request_num'].values / df.loc[
-                                                                                                                        :(
-                                                                                                                            num),
-                                                                                                                        'medium_request_num'].values
-                                df.loc[:(num), 'matched_short_request_ratio'] = df.loc[:(num),
-                                                                                'matched_short_request_num'].values / df.loc[
-                                                                                                                      :(
-                                                                                                                          num),
-                                                                                                                      'short_request_num'].values
-                                df.loc[:(num), 'matched_request_ratio'] = df.loc[:(num),
-                                                                          'matched_request_num'].values / df.loc[:(num),
-                                
-                                                                                                     'total_request_num'].values
-                                print(df.columns) 
-                                pickle.dump(df,
-                                            open(load_path + 'performance_record_test_' + env_params['method'] + '.pickle',
-                                                 'wb'))
-                                print(df.iloc[test_num-1, :])
-
-                                # np.savetxt(load_path + "supply_dist_" + simulator.method + ".csv", simulator.driver_spatial_dist, delimiter=",")
+                                trainer.test(
+                                        simulator=simulator,
+                                        test_config={
+                                            'test_num': 10,
+                                            'test_dates': TEST_DATE_LIST,
+                                            'column_list': column_list,
+                                            'method': simulator.method,
+                                            'save_interval': 10,
+                                            'interval': 5,         # Interval for checking convergence
+                                            'threshold': 5,        # Convergence threshold
+                                            'output_path': load_path
+                                        }
+                                        )
 
                             elif simulator.experiment_mode == 'train':
                                 print("training process")
@@ -220,54 +98,39 @@ if __name__ == "__main__":
                                 epsilons = np.concatenate([epsilons, np.zeros(NUM_EPOCH - 2500)])
                                 # epsilons = np.zeros(NUM_EPOCH)
                                 total_reward_record = np.zeros(NUM_EPOCH)
-                                agent = None
-                                if simulator.method in ['sarsa', 'sarsa_no_subway', 'sarsa_travel_time',
-                                                        'sarsa_travel_time_no_subway', 'sarsa_total_travel_time',
-                                                        'sarsa_total_travel_time_no_subway']:
-                                    agent = SarsaAgent(**sarsa_params)
-                                    if FLAG_LOAD:
-                                        agent.load_parameters(
-                                            load_path + 'episode_1800\\sarsa_q_value_table_epoch_1800.pickle')
-                                for epoch in range(NUM_EPOCH):
-                                    date = TRAIN_DATE_LIST[epoch % len(TRAIN_DATE_LIST)]
-                                    simulator.experiment_date = date
-                                    simulator.reset()
-                                    start_time = time.time()
-                                    for step in range(simulator.finish_run_step):
-                                        dispatch_transitions = simulator.rl_step(agent, epsilons[epoch])
-                                        if agent is not None:
-                                            # TODO: get_action() and update() 
-                                            agent.perceive(dispatch_transitions)
-                                    end_time = time.time()
-                                    total_reward_record[epoch] = simulator.total_reward
-                                    # pickle.dump(simulator.order_status_all_time,open("1106a-order.pkl","wb"))
-                                    # pickle.dump(simulator.driver_status_all_time,open("1106a-driver.pkl","wb"))
-                                    # pickle.dump(simulator.used_driver_status_all_time,open("1106a-used-driver.pkl","wb"))
-                                    print('epoch:', epoch)
-                                    print('epoch running time: ', end_time - start_time)
-                                    print('epoch total reward: ', simulator.total_reward)
-                                    print("total orders",simulator.total_request_num)
-                                    print("matched orders",simulator.matched_requests_num)
-                                    print("step1:order dispatching:",simulator.time_step1)
-                                    print("step2:reaction",simulator.time_step2)
-                                    print("step3:bootstrap new orders:",simulator.step3)
-                                    print("step4:cruise:", simulator.step4)
-                                    print("step4_1:track_recording",simulator.step4_1)
-                                    print("step5:update state",simulator.step5)                                 
-                                    print("step6:offline update",simulator.step6)
-                                    print("step7: update time",simulator.step7)
-                                    pickle.dump(simulator.record,open("output/order_record-1103.pickle","wb"))
-                                    # if epoch % 200 == 0:  # save the result every 200 epochs
-                                    #     agent.save_parameters(epoch)
+                                matching_agent_params = {
+                                    'strategy_type': simulator.method,
+                                    'strategy_params': sarsa_params,
+                                    'load_path': load_path + 'episode_1800\\sarsa_q_value_table_epoch_1800.pickle',
+                                    'flag_load': FLAG_LOAD  # 新增 FLAG_LOAD 参数
+                                }
+                                pricing_agent = PricingAgent(strategy="static")
+                                matching_agent = MatchingAgent(**matching_agent_params)
+                                # Initialize SimulatorTrainer
+                                trainer = SimulatorTrainer(
+                                    simulator=simulator,
+                                    matching_agent=matching_agent,
+                                    pricing_agent=pricing_agent
+                                )
 
-                                    if epoch % 200 == 0:  # plot and save training curve
-                                        # plt.plot(list(range(epoch)), total_reward_record[:epoch])
-                                        pickle.dump(total_reward_record, open(load_path + 'training_results_record', 'wb'))
+                                trainer.train(
+                                    simulator=simulator,
+                                    train_config={
+                                        'num_epochs': NUM_EPOCH,
+                                        'train_dates': TRAIN_DATE_LIST,
+                                        'epsilons': epsilons,
+                                        'save_interval': 200,
+                                        'output_path': load_path,
+                                        'flag_load': FLAG_LOAD,
+                                    }
+                                )
+
 
                             for step in tqdm(range(simulator.finish_run_step)):
                                 new_tracks = simulator.rl_step()
                                 track_record.append(new_tracks)
 
+                            # output3:    
                             match_and_cancel_track_list = simulator.match_and_cancel_track
                             file_path = './output3/' + pc_flag + "_" + dl_flag + "_" + "cruise="+str(cr_flag)
                             if not os.path.exists(file_path):

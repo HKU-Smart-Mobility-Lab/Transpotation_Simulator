@@ -43,7 +43,7 @@ docker run -d -e CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1 -v /path/to/the/Transportation
 
 4. Enter the interactive shell of the conatiner `simulator`
 ```bash
-docker exec -it simultor /bin/bash
+docker exec -it simulator /bin/bash
 ```
 
 - After enter the interactive shell , you will be in the working directory `/simulator`, you can navigate yourself to  `/simulator/scripts` directory (the directory you choose to mount to) to run the main function

@@ -31,6 +31,12 @@ class SimulatorPattern(object):
         if self.simulator_mode == 'toy_mode':
             self.request_all = pickle.load(open(data_path + self.request_file_name + '.pickle', 'rb'))
             # print(self.request_all)
+            # TO DO: add driver info(这里难道不是读取的文件吗？-----数据也需要修改)
             self.driver_info = pickle.load(open(load_path + self.driver_file_name + '.pickle', 'rb')).head(env_params['driver_num'])
-            # self.driver_info = self.driver_info.sample(n=env_params['driver_num'])
-            # print(self.driver_info)
+            
+            # Andrew
+            # modify the dataset for testing: 如果没有 av 和 ev 字段，随机或基于规则初始化
+            if 'av' not in self.driver_info.columns:
+                self.driver_info['av'] = np.random.choice([0, 1], size=self.driver_info.shape[0], p=[0.7, 0.3])  # 示例随机规则
+            if 'ev' not in self.driver_info.columns:
+                self.driver_info['ev'] = np.random.choice([0, 1], size=self.driver_info.shape[0], p=[0.5, 0.5])  # 示例随机规则

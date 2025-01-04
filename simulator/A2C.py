@@ -2,7 +2,7 @@ import numpy as np
 from keras.models import Sequential, Model
 from keras.layers import Dense, Dropout, Input, Lambda, Reshape, concatenate, Conv2D, Flatten
 from keras.layers.merge import Add, Multiply
-from keras.optimizers import adam_v2
+from keras.optimizers import Adam
 from keras.losses import CategoricalCrossentropy, MeanSquaredError
 #import keras.backend as K
 #import tensorflow as tf
@@ -10,7 +10,8 @@ import random
 from copy import deepcopy
 from path import *
 from collections import deque
-#from scipy import exp
+#from scipy import ex
+
 
 # rl for repositioning
 # A2C
