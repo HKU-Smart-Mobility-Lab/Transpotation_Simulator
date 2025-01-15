@@ -48,13 +48,13 @@ if __name__ == "__main__":
 
                         if env_params['rl_mode'] == "matching":
                             if simulator.experiment_mode == 'test':
+                                print(os.getcwd())
                                 # TODO:继续修改、重构
                                 pricing_agent = PricingAgent(strategy="static")
                                 matching_agent_params = {
                                     'strategy_type': simulator.method,
                                     'strategy_params': sarsa_params,
-                                    'load_path': load_path + 'episode_4000\\sarsa_q_value_table_epoch_4000.pickle',
-                                    'flag_load': FLAG_LOAD  # 新增 FLAG_LOAD 参数
+                                    'load_path': load_path + 'simulator/episode_2800/sarsa_q_value_table_epoch_2800.pickle',
                                 }
 
                                 matching_agent = MatchingAgent(**matching_agent_params)
@@ -101,7 +101,7 @@ if __name__ == "__main__":
                                 matching_agent_params = {
                                     'strategy_type': simulator.method,
                                     'strategy_params': sarsa_params,
-                                    'load_path': load_path + 'episode_1800\\sarsa_q_value_table_epoch_1800.pickle',
+                                    'load_path': load_path + 'simulator/episode_1800/sarsa_q_value_table_epoch_1800.pickle',
                                     'flag_load': FLAG_LOAD  # 新增 FLAG_LOAD 参数
                                 }
                                 pricing_agent = PricingAgent(strategy="static")

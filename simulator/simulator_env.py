@@ -1,5 +1,6 @@
 import pandas as pd
 from pricing_agent import PricingAgent
+from matching_agent import MatchingAgent
 
 from simulator_pattern import *
 from utilities import *
@@ -196,7 +197,7 @@ class Simulator:
         # TJ
         # self.requests['immediate_reward'] = 2.5
         # TJ
-        self.wait_requests = pd.DataFrame(columns=self.request_columns)
+        self.wait_requests = pd.DataFrame(columns=self.request_columns) # Where wait_requests are stored
         self.matched_requests = pd.DataFrame(columns=self.request_columns)
         # TJ
         self.total_reward = 0
@@ -565,6 +566,7 @@ class Simulator:
             # if self.time in self.request_databases.keys():
             #     temp_request = self.request_databases[self.time]
             if temp_request == []:
+                print('temp_request is empty')
                 return
             database_size = len(temp_request)
             # sample a portion of historical orders
@@ -1199,7 +1201,11 @@ class Simulator:
 
         # Step 1: order dispatching
         wait_requests = deepcopy(self.wait_requests)
+        # print("--------------------wait_requests----------------:",wait_requests.shape[0])
         driver_table = deepcopy(self.driver_table)
+        # con_ready_to_dispatch = (driver_table['status'] == 0) | (driver_table['status'] == 4)
+        # idle_driver_table = driver_table[con_ready_to_dispatch]
+        # print("--------------------idle_driver_table----------------:",idle_driver_table.shape[0])
         time1 = time.time()
         # print("order duplicated flag:",wait_requests.order_id.duplicated().sum())
         matched_pair_actual_indexes, matched_itinerary = order_dispatch(wait_requests, driver_table,
@@ -1237,9 +1243,9 @@ class Simulator:
             self.matched_requests = pd.concat([self.matched_requests, df_new_matched_requests], axis=0)
             self.matched_requests = self.matched_requests.reset_index(drop=True)
             self.wait_requests = df_update_wait_requests.reset_index(drop=True)
-
         # Step 3: bootstrap new orders
             self.step_bootstrap_new_orders(score_agent, epsilon)
+        
         time4 = time.time()
         self.step3 += (time4 - time3)
         
@@ -1271,6 +1277,8 @@ class Simulator:
         self.step7 += (time8 - time7)
         
         # 返回值：状态-动作-奖励-下一状态转移信息
+
+        # TODO: update module
         return self.dispatch_transitions_buffer   # rl for matching
 
     def step1(self): # rl for repositioning
@@ -1329,72 +1337,198 @@ class Simulator:
             "demand": self.requests.shape[0],  # 当前订单数量
         }
     
-    def update_pricing_agent(self, pricing_action):
+    def exectue_pricing_action(self, pricing_action):
         """
         更新订单表中的价格
         """
         self.requests['designed_reward'] = pricing_action  # 使用 PricingAgent 提供的价格更新订单
 
+# Add changes for matching module: Andrew
     def get_matching_state(self):
         """
-        Returns the state required for matching.
-        Example: available drivers and pending orders.
+        Get the current state for the matching process.
+        :return: A dictionary containing the state information.
         """
-        return {
-            "drivers": self.driver_table[self.driver_table['status'] == 0].to_dict('records'),  # Idle drivers
-            "orders": self.requests[self.requests['status'] == 0].to_dict('records'),  # Unmatched orders
+        # Extract required information
+        state = {
+            'wait_requests': deepcopy(self.wait_requests),
+            'driver_table': deepcopy(self.driver_table),
+            'time': self.time,
+            'current_step': self.current_step,
+            'dispatch_method': self.dispatch_method,
+            'method': self.method,
+            'maximal_pickup_distance': self.maximal_pickup_distance,
         }
+        return state
 
-    def update_matching_agent(self, matching_action):
+    def execute_matching_action(self, matching_action):
         """
-        更新匹配状态
+        Execute the matching action and generate matched itineraries.
+        :param matching_action: Matched order-driver pairs.
+        :return: Matched itineraries.
         """
-        # 更新司机状态
-        for driver_id, action in matching_action.items():
-            self.driver_table.loc[self.driver_table['driver_id'] == driver_id, 'status'] = action
-
-        # 更新订单状态
-        for order_id, action in matching_action.items():
-            self.requests.loc[self.requests['order_id'] == order_id, 'status'] = action 
+        if len(matching_action) == 0:
+            # If no matching action, return empty itinerary
+            return []
         
-    # def step(self):
-    #     """
-    #     This function used to run the simulator step by step
-    #     :return:
-    #     """
-    #     self.new_tracks = {}
+        request_indexs = np.array(matching_action)[:, 0]
+        driver_indexs = np.array(matching_action)[:, 1]
 
-    #     # Step 1: order dispatching
-    #     wait_requests = deepcopy(self.wait_requests)
-    #     driver_table = deepcopy(self.driver_table)
-    #     matched_pair_actual_indexes, matched_itinerary = order_dispatch(wait_requests, driver_table, self.maximal_pickup_distance, self.dispatch_method,self.method)
-    #     # Step 2: driver/passenger reaction after dispatching
-    #     df_new_matched_requests, df_update_wait_requests = self.update_info_after_matching_multi_process(matched_pair_actual_indexes, matched_itinerary)
-    #     self.matched_requests = pd.concat([self.matched_requests, df_new_matched_requests], axis=0)
-    #     self.matched_requests = self.matched_requests.reset_index(drop=True)
-    #     self.wait_requests = df_update_wait_requests.reset_index(drop=True)
+        request_indexs_new = [
+            self.wait_requests[self.wait_requests['order_id'] == int(index)].index.tolist()[0]
+            for index in request_indexs
+        ]
+        driver_indexs_new = [
+            self.driver_table[self.driver_table['driver_id'] == index].index.tolist()[0]
+            for index in driver_indexs
+        ]
 
-    #     # Step 3: bootstrap new orders
-    #     self.order_generation()
+        request_array_new = np.array(self.wait_requests.loc[request_indexs_new])[:, :2]
+        driver_loc_array_new = np.array(self.driver_table.loc[driver_indexs_new])[:, :2]
 
-    #     # Step 4: both-rg-cruising and/or repositioning decision
-    #     self.cruise_and_reposition()
+        itinerary_node_list, itinerary_segment_dis_list, dis_array = route_generation_array(
+            driver_loc_array_new, request_array_new, mode=env_params['pickup_mode'])
 
-    #     # Step 4.1: track recording
-    #     if self.track_recording_flag:
-    #         self.real_time_track_recording()
+        matched_itinerary = [itinerary_node_list, itinerary_segment_dis_list, dis_array]
+        
+        return np.array(matched_itinerary)
 
-    #     # Step 5: update next state for drivers
-    #     self.update_state()
+    def get_matching_reward(self, df_new_matched_requests):
+        """
+        Calculate the reward based on the matched requests.
+        :param df_new_matched_requests: DataFrame containing new matched requests.
+        :return: The total reward for the current step.
+        """
+        if len(df_new_matched_requests) != 0:
+            return np.sum(df_new_matched_requests['designed_reward'].values)
+        return 0
 
-    #     # Step 6： online/offline update()
-    #     self.driver_online_offline_update()
+    def process_matching_results(self, df_new_matched_requests, df_update_wait_requests):
+        """
+        Process matching results: calculate rewards and update matched/waiting requests.
+        :param df_new_matched_requests: DataFrame containing new matched requests.
+        :param df_update_wait_requests: DataFrame containing updated waiting requests.
+        :return: None
+        """
+        # Calculate total reward
+        self.total_reward += self.get_matching_reward(df_new_matched_requests)
+    
+        # Update matched and waiting requests if not end of episode
+        if self.end_of_episode == 0:
+            self.matched_requests = pd.concat([self.matched_requests, df_new_matched_requests], axis=0).reset_index(drop=True)
+            self.wait_requests = df_update_wait_requests.reset_index(drop=True)
 
-    #     # Step 7: update time
-    #     self.update_time()
+    def update_environment_after_matching(self, matching_action, matched_itinerary, start_time):
+        """
+        Update the environment after the matching step.
+        :param matching_action: List of matched order-driver pairs.
+        :param matched_itinerary: List of itineraries for matched drivers.
+        :param start_time: Start time of this step for time tracking.
+        :return: None
+        """
+        # Update on-trip driver count and occupancy rate
+        self.cumulative_on_trip_driver_num += self.driver_table[self.driver_table['status'] == 1].shape[0]
+        self.cumulative_on_trip_driver_num += self.driver_table[self.driver_table['status'] == 2].shape[0]
+        self.occupancy_rate = self.cumulative_on_trip_driver_num / (
+                (1 + self.current_step) * self.driver_table.shape[0])
 
-    #     return self.new_tracks
+        # Update matched and waiting requests
+        df_new_matched_requests, df_update_wait_requests = self.update_info_after_matching_multi_process(
+            matching_action, matched_itinerary)
 
+        # Update record
+        if isinstance(self.record, str):  # Initialize record if it's a string
+            self.record = df_new_matched_requests
+        else:
+            self.record = pd.concat([self.record, df_new_matched_requests], axis=0, ignore_index=True)
+
+        # Update matched requests count
+        self.matched_requests_num += len(df_new_matched_requests)
+
+        # Process matching results
+        self.process_matching_results(df_new_matched_requests, df_update_wait_requests)
+
+        # Update time for this step
+        end_time = time.time()
+        self.time_step2 += (end_time - start_time)
+
+
+
+
+# rl_step for training: Andrew
+    def rl_step_train(self, matching_agent:MatchingAgent,pricing_agent:PricingAgent, epsilon=0): # rl for matching
+        """
+        RL step for matching module in the simulator.
+        :param matching_agent: Instance of MatchingAgent or similar RL agent.
+        :param epsilon: Exploration rate for the matching agent.
+        :return: Transitions for the RL agent to update.
+        """
+        self.dispatch_transitions_buffer = [np.array([]).reshape([0, 2]), np.array([]), np.array([]).reshape([0, 2]),
+                                            np.array([]).astype(float)]  # rl for matching
+        
+        time1 = time.time()
+        # Step 1: Retrieve matching state
+        matching_state = self.get_matching_state()
+
+        # Step 2: Agent selects an action
+        matching_action = matching_agent.get_action(matching_state, epsilon)
+
+        # Step 3: Execute the matching action
+        matched_itinerary = self.execute_matching_action(matching_action)
+        time2 = time.time()
+        self.time_step1 += (time2 - time1)
+
+        # Step 4: driver/passenger reaction after dispatching
+        start_time = time.time()
+        self.update_environment_after_matching(matching_action, matched_itinerary, start_time)
+        time3 = time.time()
+
+
+
+        # Step 5: bootstrap new orders
+        self.step_bootstrap_new_orders(matching_agent, epsilon)
+        time4 = time.time()
+        self.step3 += (time4 - time3)
+        
+        # Step 6: pricing module
+        pricing_state = self.get_pricing_state()
+        pricing_action = pricing_agent.get_action(pricing_state)
+        self.exectue_pricing_action(pricing_action)
+
+        # Step 7.1: both-rg-cruising and/or repositioning decision
+        self.cruise_and_reposition() # self.dispatch_transitions_buffer updated here
+        time5 = time.time()
+        self.step4 += (time5 - time4)
+        
+        # Step 7.2: track recording
+        if self.track_recording_flag:
+            self.real_time_track_recording()
+        time5_1 = time.time()
+        self.step4_1 += (time5_1-time5)
+        
+        # Step 8: update next state for drivers
+        self.update_state()
+        time6 = time.time()
+        self.step5 += (time6 - time5_1)
+        
+        # Step 9： online/offline update()
+        self.driver_online_offline_update()
+        time7 = time.time()
+
+        self.step6 += (time7 - time6)
+        # Step 10: update time
+        self.update_time()
+        time8 = time.time()
+
+        self.step7 += (time8 - time7)
+        
+        # 返回值：状态-动作-奖励-下一状态转移信息
+
+        # step 11: update matching agent
+        if matching_agent is not None:
+            matching_agent.update(self.dispatch_transitions_buffer) # Andrew
+
+        return self.dispatch_transitions_buffer   # rl for matching
 
 
 

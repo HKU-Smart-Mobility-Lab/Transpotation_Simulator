@@ -44,7 +44,7 @@ class SimulatorTrainer:
         print(f"  Step 6 - Offline update: {simulator.step6}")
         print(f"  Step 7 - Update time: {simulator.step7}")
 
-    def run_training_epoch(self, simulator: Simulator, agent: MatchingAgent, epoch, epsilon, train_config):
+    def run_training_epoch(self, simulator: Simulator, matching_agent: MatchingAgent, pricing_agent:PricingAgent, epoch, epsilon, train_config):
         """
         Run a single training epoch.
         :param simulator: Simulator instance.
@@ -67,9 +67,8 @@ class SimulatorTrainer:
         # Run the simulation
         start_time = time.time()
         for step in range(simulator.finish_run_step):
-            dispatch_transitions = simulator.rl_step(agent, epsilon)
-            if agent is not None:
-                agent.update(dispatch_transitions)
+            # TODO: Implement RL agent logic here
+            dispatch_transitions = simulator.rl_step_train(matching_agent, pricing_agent, epsilon)
         end_time = time.time()
 
         # Collect metrics
@@ -112,11 +111,12 @@ class SimulatorTrainer:
         """
         total_reward_record = np.zeros(train_config['num_epochs'])
         epsilons = train_config['epsilons']
-        agent = self.matching_agent
+        matching_agent = self.matching_agent
+        pricing_agent = self.pricing_agent
     
         for epoch in range(train_config['num_epochs']):
             # Run a single training epoch
-            metrics = self.run_training_epoch(simulator, agent, epoch, epsilons[epoch], train_config)
+            metrics = self.run_training_epoch(simulator, matching_agent, pricing_agent, epoch, epsilons[epoch], train_config)
 
             # Record total reward
             total_reward_record[epoch] = metrics['total_reward']

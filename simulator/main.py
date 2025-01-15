@@ -80,7 +80,7 @@ if __name__ == "__main__":
                                                             'sarsa_total_travel_time', 'sarsa_total_travel_time_no_subway']:
                                         agent = SarsaAgent(**sarsa_params)
                                         agent.load_parameters(
-                                            load_path + 'episode_4000\\sarsa_q_value_table_epoch_4000.pickle')
+                                            load_path + 'simulator/episode_2800/sarsa_q_value_table_epoch_2800.pickle')
 
                                     total_reward = 0
                                     total_request_num = 0
@@ -227,7 +227,7 @@ if __name__ == "__main__":
                                     agent = SarsaAgent(**sarsa_params)
                                     if FLAG_LOAD:
                                         agent.load_parameters(
-                                            load_path + 'episode_1800\\sarsa_q_value_table_epoch_1800.pickle')
+                                            load_path + 'simulator/episode_2800/sarsa_q_value_table_epoch_2800.pickle')
                                 for epoch in range(NUM_EPOCH):
                                     date = TRAIN_DATE_LIST[epoch % len(TRAIN_DATE_LIST)]
                                     simulator.experiment_date = date
@@ -262,6 +262,7 @@ if __name__ == "__main__":
 
                                     if epoch % 200 == 0:  # plot and save training curve
                                         # plt.plot(list(range(epoch)), total_reward_record[:epoch])
+                                        agent.save_parameters(epoch)
                                         pickle.dump(total_reward_record, open(load_path + 'training_results_record', 'wb'))
 
                             for step in tqdm(range(simulator.finish_run_step)):
@@ -310,7 +311,7 @@ if __name__ == "__main__":
                                                         critic_structure=CRITIC_STRUCTURE,
                                                         model_name=simulator.reposition_method)
 
-                                repo_agent = A2C(**agent_params)
+                                repo_agent = A2C(**agent_params) # Where the RepositionAgent is initialized
                                 ax,ay= [],[]
                                 for epoch in range(NUM_EPOCH):
                                     start_time = time.time()

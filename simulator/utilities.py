@@ -690,6 +690,7 @@ def order_dispatch(wait_requests, driver_table, maximal_pickup_distance=950, dis
     matched_itinerary = []
 
     if num_wait_request > 0 and num_idle_driver > 0:
+        print("-----------------We are in the if condition-----------------------")
         if dispatch_method == 'LD':
             # generate order driver pairs and corresponding itinerary
             request_array_temp = wait_requests.loc[:, ['origin_lng', 'origin_lat', 'order_id', 'weight']]
@@ -701,10 +702,14 @@ def order_dispatch(wait_requests, driver_table, maximal_pickup_distance=950, dis
                 # weight转换为最大pickup distance - 当前pickup distance
                 request_array[:,-1] = maximal_pickup_distance - dis_array + 1
             flag = np.where(dis_array <= maximal_pickup_distance)[0]
+            print("-------------------we are checking flag-----------------")
+            print("flag:",flag)
             if len(flag) > 0:
                 order_driver_pair = np.vstack(
                     [request_array[flag, 2], driver_loc_array[flag, 2], request_array[flag, 3], dis_array[flag]]).T
                 matched_pair_actual_indexs = LD(order_driver_pair.tolist())
+                print("We are here!!!!!!!!!!!!")
+                print("array dimension:",matched_pair_actual_indexs.ndim)
                 request_indexs = np.array(matched_pair_actual_indexs)[:, 0]
                 driver_indexs = np.array(matched_pair_actual_indexs)[:, 1]
                 request_indexs_new = []
@@ -717,14 +722,6 @@ def order_dispatch(wait_requests, driver_table, maximal_pickup_distance=950, dis
                 driver_loc_array_new = np.array(driver_loc_array_temp.loc[driver_indexs_new])[:,:2]
                 itinerary_node_list, itinerary_segment_dis_list, dis_array = route_generation_array(
                     driver_loc_array_new, request_array_new, mode=env_params['pickup_mode'])
-                # itinerary_node_list_new = []
-                # itinerary_segment_dis_list_new = []
-                # dis_array_new = []
-                # for item in matched_pair_actual_indexs:
-                #     index = int(item[3])
-                #     itinerary_node_list_new.append(itinerary_node_list[index])
-                #     itinerary_segment_dis_list_new.append(itinerary_segment_dis_list[index])
-                #     dis_array_new.append(dis_array[index])
 
                 matched_itinerary = [itinerary_node_list, itinerary_segment_dis_list, dis_array]
     return matched_pair_actual_indexs, np.array(matched_itinerary)
